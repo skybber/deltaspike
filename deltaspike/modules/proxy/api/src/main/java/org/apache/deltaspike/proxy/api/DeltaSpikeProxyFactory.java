@@ -22,9 +22,12 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
-import javax.enterprise.inject.spi.BeanManager;
+import java.util.Set;
+
+import javax.interceptor.InterceptorBinding;
 
 import org.apache.deltaspike.core.util.ClassUtils;
 import org.apache.deltaspike.core.util.ReflectionUtils;
@@ -102,30 +105,30 @@ public abstract class DeltaSpikeProxyFactory
     private boolean containsInterceptorBinding(BeanManager beanManager, Annotation[] annotations)
     {
         for (Annotation annotation : annotations)
-        {            
+        {
             Class<? extends Annotation> annotationType = annotation.annotationType();
-            
+
             if (beanManager.isInterceptorBinding(annotationType))
             {
                 return true;
             }
 
             if (beanManager.isStereotype(annotationType))
-            {                
+            {
                 boolean containsInterceptorBinding = containsInterceptorBinding(
                         beanManager,
                         annotationType.getDeclaredAnnotations());
-                
+
                 if (containsInterceptorBinding)
                 {
                     return true;
                 }
             }
         }
-        
+
         return false;
     }
-        
+
     private String constructProxyClassName(Class<?> clazz)
     {
         return clazz.getName() + getProxyClassSuffix();
@@ -135,14 +138,14 @@ public abstract class DeltaSpikeProxyFactory
     {
         return method.getName() + SUPER_ACCESSOR_METHOD_SUFFIX;
     }
-    
+
     public static Method getSuperAccessorMethod(Object proxy, Method method) throws NoSuchMethodException
     {
         return proxy.getClass().getMethod(
                 constructSuperAccessorMethodName(method),
                 method.getParameterTypes());
     }
-    
+
     /**
      * Checks if the given class is DS proxy class.
      *
@@ -185,18 +188,23 @@ public abstract class DeltaSpikeProxyFactory
 
         return false;
     }
-    
+
     protected ArrayList<Method> collectAllMethods(Class<?> clazz)
     {
         ArrayList<Method> methods = new ArrayList<Method>();
-        for (Method method : clazz.getDeclaredMethods())
+        Set<Method> abstractMethodLeaves = new HashSet<>();
+        for (Method method : clazz.getMethods())
         {
             if (!ignoreMethod(method, methods))
             {
                 methods.add(method);
+                if (Modifier.isAbstract(method.getModifiers()))
+                {
+                    abstractMethodLeaves.add(method);
+                }
             }
         }
-        for (Method method : clazz.getMethods())
+        for (Method method : clazz.getDeclaredMethods())
         {
             if (!ignoreMethod(method, methods))
             {
@@ -236,7 +244,7 @@ public abstract class DeltaSpikeProxyFactory
             while (methodIterator.hasNext())
             {
                 Method method = methodIterator.next();
-                if (Modifier.isAbstract(method.getModifiers()))
+                if (Modifier.isAbstract(method.getModifiers()) && !abstractMethodLeaves.contains(method))
                 {
                     try
                     {
@@ -259,11 +267,11 @@ public abstract class DeltaSpikeProxyFactory
 
         return methods;
     }
-    
+
     protected ArrayList<Method> filterInterceptMethods(Class<?> targetClass, ArrayList<Method> allMethods)
     {
         ArrayList<Method> methods = new ArrayList<Method>();
-        
+
         Iterator<Method> it = allMethods.iterator();
         while (it.hasNext())
         {
@@ -276,25 +284,25 @@ public abstract class DeltaSpikeProxyFactory
                 methods.add(method);
             }
         }
-        
+
         return methods;
     }
-    
+
     protected Class<?>[] getAdditionalInterfacesToImplement(Class<?> targetClass)
     {
         return null;
     }
-    
+
     protected abstract ArrayList<Method> getDelegateMethods(Class<?> targetClass, ArrayList<Method> allMethods);
-    
+
     protected abstract String getProxyClassSuffix();
-    
-    
+
+
     public Method[] getDelegateMethods(Class<?> targetClass)
     {
         ArrayList<Method> allMethods = collectAllMethods(targetClass);
         ArrayList<Method> delegateMethods = getDelegateMethods(targetClass, allMethods);
-        
+
         if (delegateMethods == null)
         {
             return new Method[0];
